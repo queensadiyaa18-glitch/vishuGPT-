@@ -1,0 +1,8 @@
+{
+  "name": "JARVIS",
+  "description": "AI Voice Assistant powered by Gemini Live with real-time on-device voice processing, offline speech recognition (Vosk), accessibility automation, and custom personas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
