@@ -96,7 +96,7 @@ object VoskModelManager {
                 assetManager.open(fromAssetPath).use { input ->
                     toDir.parentFile?.mkdirs()
                     FileOutputStream(toDir).use { output ->
-                        input.copyTo(output)
+                        input.copyTo(output, bufferSize = 65536)
                     }
                 }
             } catch (e: Exception) {

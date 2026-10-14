@@ -39,7 +39,7 @@ class OrbHelper(
     @SuppressLint("SetJavaScriptEnabled")
     fun setup() {
         webView.setBackgroundColor(Color.TRANSPARENT)
-        webView.setLayerType(WebView.LAYER_TYPE_HARDWARE, null)
+        webView.setLayerType(WebView.LAYER_TYPE_NONE, null)
 
         val settings: WebSettings = webView.settings
         settings.javaScriptEnabled = true

@@ -85,7 +85,7 @@ class JarvisApp : Application() {
             memoryManager = memoryManager
         )
 
-        VoskModelManager.init(this, CoroutineScope(Dispatchers.Default))
+        VoskModelManager.init(this, CoroutineScope(Dispatchers.IO))
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             private var startedActivities = 0

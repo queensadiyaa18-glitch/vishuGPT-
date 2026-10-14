@@ -73,7 +73,17 @@ if (isEmbedded) {
   document.body.style.background = "transparent";
 }
 
-const FOV=45, VIS=3.1, ORBIT=36, COUNT=6000;
+const ua = navigator.userAgent || "";
+const isAndroid = /Android/i.test(ua);
+const androidMatch = ua.match(/Android\s([0-9\.]+)/);
+const androidVer = androidMatch ? parseFloat(androidMatch[1]) : 14;
+const isLegacyDevice = isAndroid && androidVer <= 10.5;
+
+const FOV=45, VIS=3.1, ORBIT=isLegacyDevice ? 24 : 36;
+const COUNT = isLegacyDevice ? 1600 : (isAndroid ? 2400 : 4500);
+const maxPixelRatio = isLegacyDevice ? 1.0 : (isAndroid ? 1.25 : 2.0);
+const pointScaleMultiplier = isLegacyDevice ? 1.35 : (isAndroid ? 1.15 : 1.0);
+
 const STATES={
   idle:     {scale:1.00,speed:.35,cyan:.35,purple:.45,bright:1.00,glow:.50,ring:.15,wob:0},
   listening:{scale:1.05,speed:.85,cyan:1.00,purple:.25,bright:1.12,glow:.95,ring:.35,wob:0},
@@ -85,8 +95,17 @@ const $=s=>document.querySelector(s);
 const stage=$("#stage"),canvas=$("#c"),shadowEl=$("#shadow");
 
 let renderer;
-try{renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true,powerPreference:"high-performance"});}
-catch(e){$("#err").style.display="block";stage.style.display="none";return;}
+try{
+  renderer=new THREE.WebGLRenderer({
+    canvas,
+    antialias: !isAndroid, // Turn off MSAA on Android to prevent GPU render-buffer thrashing on Android 8-10
+    alpha: true,
+    powerPreference: "high-performance",
+    precision: isLegacyDevice ? "mediump" : "highp",
+    stencil: false,
+    depth: false
+  });
+} catch(e){$("#err").style.display="block";stage.style.display="none";return;}
 renderer.setClearColor(0x000000,0);
 const scene=new THREE.Scene();
 const camera=new THREE.PerspectiveCamera(FOV,1,.1,50);
@@ -104,15 +123,15 @@ void main(){
  float n=sin(d.x*3.+t*.8+aRnd*6.)*sin(d.y*3.-t*.6)*sin(d.z*3.+t*.5);
  float r=base*(1.+n*.05+uAmp*.1*aRnd+.015*sin(t*2.+aRnd*20.));
  vec4 mv=modelViewMatrix*vec4(d*r,1.);
- float depth=smoothstep(-1.,1.,mv.z+uCamZ);          /* 0 = back, 1 = front */
+ float depth=smoothstep(-1.,1.,mv.z+uCamZ);
  vA=mix(.22,1.,depth);
  vec3 c=mix(BLUE,CYAN,smoothstep(-.5,.9,d.y+n)*uCyan);
  c=mix(c,PURP,smoothstep(.1,.9,d.x*.6-d.y*.3+aRnd*.4)*uPurple);
  c=mix(DEEP,c,.5+.5*aRnd);
  vC=c*uBright*mix(.6,1.,depth);
- gl_PointSize=max((.009+aRnd*.017)*(1.+uAmp*.5)*uPx/(-mv.z)*mix(.85,1.2,depth),1.7);
+ gl_PointSize=max((.011*` + pointScaleMultiplier + `+aRnd*.019*` + pointScaleMultiplier + `)*(1.+uAmp*.5)*uPx/(-mv.z)*mix(.85,1.2,depth),2.0);
  gl_Position=projectionMatrix*mv;}`;
-const dotF="precision highp float;varying vec3 vC;varying float vA;void main(){float d=length(gl_PointCoord-.5);gl_FragColor=vec4(vC,smoothstep(.5,.05,d)*vA);}";
+const dotF="precision mediump float;varying vec3 vC;varying float vA;void main(){float d=length(gl_PointCoord-.5);gl_FragColor=vec4(vC,smoothstep(.5,.05,d)*vA);}";
 function buildParticles(){
   const pos=new Float32Array(COUNT*3),rnd=new Float32Array(COUNT);
   for(let i=0;i<COUNT;i++){
@@ -144,7 +163,7 @@ void main(){vec2 c=vUv-.5;float d=length(c)*2.,a=atan(c.y,c.x);
   glow=new THREE.Mesh(new THREE.PlaneGeometry(VIS,VIS),glowMat);glow.position.z=-.05;glow.renderOrder=-2;scene.add(glow);
 }
 function createRing(r0,r1,segs,seed,alpha){
-  const m=new THREE.Mesh(new THREE.RingGeometry(r0,r1,128,1),new THREE.ShaderMaterial({
+  const m=new THREE.Mesh(new THREE.RingGeometry(r0,r1,isLegacyDevice ? 48 : 64,1),new THREE.ShaderMaterial({
     vertexShader:"varying vec2 vP;void main(){vP=position.xy;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}",
     fragmentShader:`varying vec2 vP;uniform float uAlpha,uSeed,uSegs;uniform vec3 uA,uB,uC;
 void main(){float a=atan(vP.y,vP.x);
@@ -356,7 +375,8 @@ function updateParticles(dt){
 
 /* ---------- Resize / loop ---------- */
 function handleResize(){
-  const w=Math.max(stage.clientWidth,1),h=Math.max(stage.clientHeight,1),pr=Math.min(window.devicePixelRatio,2);
+  const w=Math.max(stage.clientWidth,1),h=Math.max(stage.clientHeight,1);
+  const pr=Math.min(window.devicePixelRatio || 1, maxPixelRatio);
   renderer.setPixelRatio(pr);renderer.setSize(w,h,false);
   camera.aspect=w/h;
   const visH=VIS/Math.min(1,w/h),tan=Math.tan(THREE.MathUtils.degToRad(FOV/2));
@@ -365,8 +385,13 @@ function handleResize(){
   shadowEl.style.top=Math.round(h/2+pxPerUnit*1.2)+"px";
 }
 let last=performance.now();
+let lastRenderTime=0;
+const targetFrameInterval = 1000 / 60;
 function animate(now){
   requestAnimationFrame(animate);
+  const elapsed = now - lastRenderTime;
+  if (elapsed < targetFrameInterval - 1.5) return;
+  lastRenderTime = now;
   const dt=Math.min((now-last)/1000,.05);last=now;
   updateOrb(dt);updateParticles(dt);renderer.render(scene,camera);
 }

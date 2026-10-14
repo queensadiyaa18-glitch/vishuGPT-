@@ -125,7 +125,9 @@ class HomeFragment : Fragment() {
     private fun setupOrbWebView() {
         binding.orbWebView.apply {
             setBackgroundColor(Color.TRANSPARENT)
-            setLayerType(View.LAYER_TYPE_HARDWARE, null)
+            // Use LAYER_TYPE_NONE so Android does not allocate an extra full-screen compositing hardware layer,
+            // allowing the internal Chromium GPU compositor to render directly without double-buffering lag on Android 8-10.
+            setLayerType(View.LAYER_TYPE_NONE, null)
 
             settings.apply {
                 javaScriptEnabled = true
@@ -137,6 +139,9 @@ class HomeFragment : Fragment() {
                 @Suppress("DEPRECATION")
                 allowUniversalAccessFromFileURLs = true
                 cacheMode = WebSettings.LOAD_DEFAULT
+                @Suppress("DEPRECATION")
+                setRenderPriority(WebSettings.RenderPriority.HIGH)
+                mediaPlaybackRequiresUserGesture = false
             }
 
             webViewClient = object : WebViewClient() {
@@ -208,11 +213,15 @@ class HomeFragment : Fragment() {
         }
     }
 
+    private var lastPushedAmp = -1f
+
     private fun pushExternalAudio(amp: Float, bass: Float, high: Float) {
         if (!isPageLoaded) return
         val now = System.currentTimeMillis()
-        if (now - lastAudioPushTime < 33L) return // ~30 calls per second throttle
+        if (now - lastAudioPushTime < 50L) return // Max 20 calls/sec to avoid clogging WebView IPC on older Androids
+        if (kotlin.math.abs(amp - lastPushedAmp) < 0.015f && amp < 0.05f) return
         lastAudioPushTime = now
+        lastPushedAmp = amp
         activity?.runOnUiThread {
             binding.orbWebView.evaluateJavascript("window.JarvisOrb && window.JarvisOrb.setExternalAudio($amp, $bass, $high);", null)
         }
